@@ -9,6 +9,7 @@ import firebase_admin
 from firebase_admin import credentials, db, storage
 import os
 import base64
+import json
 
 app = Flask(__name__)
 # Limit incoming request body size to 20MB to avoid memory issues with very large uploads
@@ -17,9 +18,33 @@ app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 CORS(app, resources={r"/*": {"origins": "*"}}, allow_headers=["Content-Type"]) 
 
 # Initialize Firebase Admin SDK
-# Download your service account key from Firebase Console
-# and save it as 'serviceAccountKey.json' in the flask-api folder
-cred = credentials.Certificate('serviceAccountKey.json')
+# In production (Render), use environment variables
+# In development, fall back to local serviceAccountKey.json
+def get_firebase_credentials():
+    """Load Firebase credentials from environment variables or local file"""
+    # Try to load from environment variables (production)
+    if all(os.getenv(key) for key in ['TYPE', 'PROJECT_ID', 'PRIVATE_KEY_ID', 'PRIVATE_KEY', 'CLIENT_EMAIL', 'CLIENT_ID', 'AUTH_URI', 'TOKEN_URI', 'AUTH_PROVIDER_X509_CERT_URL', 'CLIENT_X509_CERT_URL', 'UNIVERSE_DOMAIN']):
+        cred_dict = {
+            'type': os.getenv('TYPE'),
+            'project_id': os.getenv('PROJECT_ID'),
+            'private_key_id': os.getenv('PRIVATE_KEY_ID'),
+            'private_key': os.getenv('PRIVATE_KEY').replace('\\n', '\n'),  # Handle escaped newlines
+            'client_email': os.getenv('CLIENT_EMAIL'),
+            'client_id': os.getenv('CLIENT_ID'),
+            'auth_uri': os.getenv('AUTH_URI'),
+            'token_uri': os.getenv('TOKEN_URI'),
+            'auth_provider_x509_cert_url': os.getenv('AUTH_PROVIDER_X509_CERT_URL'),
+            'client_x509_cert_url': os.getenv('CLIENT_X509_CERT_URL'),
+            'universe_domain': os.getenv('UNIVERSE_DOMAIN')
+        }
+        return credentials.Certificate(cred_dict)
+    # Fall back to local file (development)
+    elif os.path.exists('serviceAccountKey.json'):
+        return credentials.Certificate('serviceAccountKey.json')
+    else:
+        raise ValueError('Firebase credentials not found. Set environment variables or provide serviceAccountKey.json')
+
+cred = get_firebase_credentials()
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://classscan-4fc7a-default-rtdb.europe-west1.firebasedatabase.app',
     'storageBucket': 'classscan-4fc7a.firebasestorage.app'
