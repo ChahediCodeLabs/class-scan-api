@@ -174,27 +174,40 @@ def process_class_image_from_base64(image_data, students_data):
         
         # Compare each face in class photo with student encodings
         for face_idx, face_encoding in enumerate(class_encodings):
-            print(f"\nComparing detected face {face_idx + 1}...")
-            for i, student in enumerate(students_data):
-                if not student.get('encodings'):
-                    print(f"  Student {student['name']}: No encoding available")
-                    continue
+            print(f"\n--- Analyzing detected face {face_idx + 1} ---")
+            
+            # Calculate distances for all students at once for this face
+            student_encodings = []
+            valid_students = []
+            
+            for student in students_data:
+                if student.get('encodings'):
+                    student_encodings.append(np.array(student['encodings']))
+                    valid_students.append(student)
+            
+            if not student_encodings:
+                continue
+
+            # Calculate actual Euclidean distances (lower is better)
+            distances = face_recognition.face_distance(student_encodings, face_encoding)
+            
+            for i, distance in enumerate(distances):
+                student = valid_students[i]
+                # A common good tolerance is 0.5 for more accuracy
+                is_match = distance <= 0.5
                 
-                # Convert encodings back to numpy array
-                student_encoding = np.array(student['encodings'])
+                print(f"  Student: {student['name']} | Distance: {distance:.4f} | Match: {is_match}")
                 
-                # Compare faces (threshold of 0.6 for matching)
-                matches = face_recognition.compare_faces(
-                    [student_encoding], 
-                    face_encoding,
-                    tolerance=0.6
-                )
-                
-                if matches[0]:
-                    print(f"  ✓ MATCH: Student {student['name']} is PRESENT")
-                    results[i]['isAbsent'] = False
+                if is_match:
+                    # Find the student in the original results list by ID
+                    for res in results:
+                        if res['id'] == student['id']:
+                            if res['isAbsent']:
+                                print(f"  ✅ MATCH CONFIRMED: {student['name']} is PRESENT")
+                                res['isAbsent'] = False
+                            break
         
-        print(f"\nFinal results: {results}")
+        print(f"\nFinal Attendance Summary: {[{r['name']: 'Present' if not r['isAbsent'] else 'Absent'} for r in results]}")
         return results
     
     except Exception as e:
